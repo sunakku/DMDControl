@@ -36,36 +36,38 @@ print "start interpolation"
 interpol_setting = {'method':IP.linear_i,
                 'factor':factor,
                 'Amp':Amp,'Phase':Phase,'Phase residual':Phaseresidual}
-interpolated = IP.Images(**interpol_setting)
+interpolated = IP.Phasemap(**interpol_setting)
 interpolated.interpolate()
-images = interpolated.images_large
+phasemap = interpolated.phasemap_large
+
 
 ###########################
-#create gaussian
+#create gaussian or fourier plane
 ###########################
-gaus_setting =  {'factor':factor,
-                    'images':images,
-                    'alpha':4,
-                    'method':'hologramize_test'}
-
+gaus_setting =  {'image':"gaus",
+                    'shape':np.shape(phasemap[0]),
+                    'width':0.2}#0~1, zero to image size*2#
+Gaussian = IP.TargetImage(**gaus_setting)
+Gaussian.imagefft()
+gaus = Gaussian.fimage
 
 ###########################
 #generate hologram
 ###########################
 print "start hologram generation"
 hologram_setting = {'factor':factor,
-                    'images':images,
-                    'alpha':4,
+                    'phasemap':phasemap,
+                    'fimage':gaus,
+                    'alpha':19,
                     'method':IP.hologramize}
 pattern = IP.Hologram(**hologram_setting)
-pattern.images_large = images
 pattern.compute_hologram()
 
 
 ###########################
 #upload to DMD
 ###########################
-print "start upload"
+#print "start upload"
 #lc_dmd = lc.LC6500Device()
 settings = {'compression':'rle','exposure_time':500000}
 dmd_pattern = pc.DMDPattern(**settings)
@@ -85,26 +87,21 @@ plt.title('gaussian')
 
 plt.subplot(2,5,2)
 plt.gray()
-plt.imshow(Amp_l,interpolation="none")
+plt.imshow(phasemap[0],interpolation="none")
 plt.colorbar()
 plt.title('amplitude interpolated')
 
 plt.subplot(2,5,3)
 plt.gray()
-plt.imshow(Phase_l,interpolation="none")
+plt.imshow(phasemap[1],interpolation="none")
 plt.colorbar()
 plt.title('phase interpolated')
 
 plt.subplot(2,5,4)
 plt.gray()
-plt.imshow(dmdpattern)
+plt.imshow(pattern.hologram)
 plt.title('dmdimage')
 
-plt.subplot(2,5,6)
-plt.gray()
-plt.imshow(np.real(np.fft.ifft2(np.fft.fft2(gaus))),interpolation="none")
-#plt.imshow(np.real(np.fft.ifft2(np.fft.fftshift(np.fft.fft2(image)))))
-plt.title('fourier and inverse fourier')
 
 plt.subplot(2,5,7)
 plt.gray()
@@ -119,18 +116,18 @@ plt.title('phase original')
 
 plt.subplot(2,5,9)
 plt.gray()
-plt.imshow(dmdimage)
+plt.imshow(pattern.hologram[540-xsize*factor/2:540+xsize*factor/2,960-ysize*factor/2:960+ysize*factor/2])
 plt.title('dmdimage')
 
-plt.subplot(2,5,5)
-plt.gray()
-plt.imshow(Amp_l2)
-plt.title('interpolated large amp')
+#plt.subplot(2,5,5)
+#plt.gray()
+#plt.imshow(Amp_l2)
+#plt.title('interpolated large amp')
 
-plt.subplot(2,5,10)
-plt.gray()
-plt.imshow(Phase_l2)
-plt.title('interpolated large')
+#plt.subplot(2,5,10)
+#plt.gray()
+#plt.imshow(Phase_l2)
+#plt.title('interpolated large')
 
 plt.show()
 
