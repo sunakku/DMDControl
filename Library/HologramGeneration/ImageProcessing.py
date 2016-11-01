@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import scipy.ndimage as nd
+import scipy.interpolate as interp
 import sys
 from PIL import Image as pil
 import matplotlib.pyplot as plt
@@ -58,6 +59,9 @@ class Phasemap(object):
 		self.phasemap_large[1,fa/2::fa,fa/2::fa]=self.Phase
 		self.phasemap_large[2,fa/2::fa,fa/2::fa]=self.Phase_res
                 self.phasemap_large = self.method(self.factor,self.phasemap_large)
+	
+	def interpolate_scipy(self):
+                self.phasemap_large = self.method(self.factor,self.Amp,self.Phase,self.Phase_res)
 
 	def interpolate_fft(self):
 		ftAmp = np.fft.fft2(Amp)
@@ -80,7 +84,6 @@ class Hologram(object):
 		self.hologram = np.zeros(self.resolution)
 		self.im_shape = np.shape(self.phasemap_large)[1]
 		self.X, self.Y = np.meshgrid(np.arange(self.im_shape)-self.im_shape/2,np.arange(self.im_shape)-self.im_shape/2)
-
 		self.imangle = np.angle(self.image)
 		self.imamp = np.absolute(self.image) 
 
@@ -133,16 +136,31 @@ def linear_i(factor,phasemap):
 
 
 def sinc_i(factor,phasemap):
-	'''
-	under construction 1 nov 2016 @sunami
-	'''
-	rect = np.zeros((factor*2,factor*2))
-	rect[factor/2:3/2.*factor,factor/2:3/2.*factor]=1
-	kernel=nd.convolve(rect,rect,mode='wrap')
+	size = np.shape(phasemap)[1]
+	kernel = np.zeros((size,size))
+	width = size/2/factor
+	kernel[size/2-width:size/2+width,size/2-width:size/2+width]=1
+	kernel = np.fft.fftshift(kernel)
+	maxval = phasemap.max(axis=2).max(axis=1)
+	minval = phasemap.min(axis=2).min(axis=1)
 	for i in np.arange(3):
-		phasemap[i] = nd.convolve(phasemap[i],kernel,mode='wrap')
+		convolved = np.fft.ifft2(np.fft.fft2(phasemap[i])*kernel).real
+		convolved -= np.amin(convolved)#set minimum to zero
+		phasemap[i] = (maxval[i]-minval[i])*convolved/(np.amax(convolved))#rescale
+	phasemap[0] /= np.amax(phasemap[0]) #normalize intensity
 	return phasemap
 
+##using scipy.interpolate.interp2d
+def cubic_i(factor,amp,phase,phres,phasemap):
+	size = np.shape(phase)[1]
+	x = np.arange(size)
+	y = np.arange(size)
+	x_new = np.arange(factor*size)
+	y_new = np.arange(factor*size)
+	phasemap[0] = interp.interp2d(x,y,amp,kind='cubic')(x_new,y_new)
+	phasemap[1] = interp.interp2d(x,y,phase,kind='cubic')(x_new,y_new)
+	phasemap[2] = interp.interp2d(x,y,phres,kind='cubic')(x_new,y_new)
+	return phasemap
 
 ##using fourier plane convolution(simply multiply in fourier plane) for speed up
 def zeropad(factor,ftAmp,ftPhase,ftphres):
@@ -157,16 +175,18 @@ def zeropad(factor,ftAmp,ftPhase,ftphres):
 #hologram functions
 ##############################
 def hologramize(X,Y,alpha,amp,phasesum,imageamp,resolution):
+	print "def"
 	dmdpattern = np.zeros(resolution)
+	print "pattern "
 	gratingphase = np.mod(Y+X+phasesum,12)/12.
-
+	print "grating phase"
 	#####set minimum value for amp.
 	#####to avoid inf in omega
 	#####effect to intensity:1%
 	amp += 0.01
-
 	omega = (imageamp/amp)/np.amax(imageamp/amp)
       	Xsize,Ysize = np.shape(amp)
+	print "omega"
 	hologram=1*(rand_smoothing(gratingphase,alpha,omega,Xsize,Ysize) <1)
 	dmdpattern[540-Xsize/2:540+Xsize/2,960-Ysize/2:960+Ysize/2]=hologram
 	return dmdpattern

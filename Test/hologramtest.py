@@ -58,21 +58,23 @@ print "start hologram generation"
 hologram_setting = {'factor':factor,
                     'phasemap':phasemap,
                     'fimage':gaus,
-                    'alpha':19,
+                    'alpha':10,
                     'method':IP.hologramize}
+print "setting defined"
 pattern = IP.Hologram(**hologram_setting)
+print "object"
 pattern.compute_hologram()
 
 
 ###########################
 #upload to DMD
 ###########################
-#print "start upload"
-#lc_dmd = lc.LC6500Device()
+print "start upload"
+lc_dmd = lc.LC6500Device()
 settings = {'compression':'rle','exposure_time':500000}
 dmd_pattern = pc.DMDPattern(**settings)
 dmd_pattern.pattern = pattern.hologram
-#lc_dmd.upload_image(dmd_pattern)
+lc_dmd.upload_image(dmd_pattern)
 
 
 ###########################
