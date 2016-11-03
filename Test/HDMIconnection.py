@@ -44,13 +44,12 @@ phasemap = interpolated.phasemap_large
 ###########################
 #create gaussian or fourier plane
 ###########################
-target_setting =  {'image':"im", "path":"../Data/Hologram_test/JFourie540.png",
-                    'shape':np.shape(phasemap[0]), #only applicable for
-                    'width':0.2}#gaussian width. 0~1, from zero to image size*2
+target_setting =  {'image':"", "path":"../Data/Hologram_test/JFourie540.png",
+                    'shape':np.shape(phasemap[0]),
+                    'width':0.2}#0~1, zero to image size*2#
 Target = IP.TargetImage(**target_setting)
 Target.imagefft()
 target = Target.fimage
-
 
 ###########################
 #generate hologram
@@ -85,14 +84,9 @@ fig1=plt.figure(1,(25,10))
 
 plt.subplot(2,5,1)
 plt.gray()
-if Target.image == "gaus":
-    plt.imshow(target[0],interpolation="none")
-    plt.title('target: gaus')
-else:
-    plt.imshow(np.fft.ifft2(np.fft.ifftshift(target[0]*(np.cos(target[1])+1j*np.sin(target[1])))).real,interpolation="none")
-    plt.title("target: fft, interpolation and then ifft")
+plt.imshow(target.real,interpolation="none")
+plt.title('target')
 
-    
 plt.subplot(2,5,2)
 plt.gray()
 plt.imshow(phasemap[0],interpolation="none")
@@ -127,15 +121,18 @@ plt.gray()
 plt.imshow(pattern.hologram[540-xsize*factor/2:540+xsize*factor/2,960-ysize*factor/2:960+ysize*factor/2])
 plt.title('dmdimage')
 
-if Target.image != "gaus":
-    plt.subplot(2,5,5)
-    plt.gray()
-    plt.imshow(np.log(target[0]))
-    plt.title('log(amp) of fourier transformed image ')
+#plt.subplot(2,5,5)
+#plt.gray()
+#plt.imshow(Amp_l2)
+#plt.title('interpolated large amp')
 
-    plt.subplot(2,5,10)
-    plt.gray()
-    plt.imshow(target[1])
-    plt.title('phase of fourier transformed image')
+#plt.subplot(2,5,10)
+#plt.gray()
+#plt.imshow(Phase_l2)
+#plt.title('interpolated large')
 
 plt.show()
+
+
+
+

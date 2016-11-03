@@ -22,17 +22,29 @@ class TargetImage(object):
                 self.image = kwargs.pop('image', None)
                 self.targetshape = kwargs.pop('shape', (540,540))
 		self.path =  kwargs.pop('path', None)
-		self.fimage = np.zeros(self.targetshape,dtype=np.complex64)
-		##gaussian width within [0,1] from zero to imagesize*2
-		self.width = kwargs.pop('width', 1.0)
+		self.fimage = np.zeros((3,self.targetshape[0],self.targetshape[1])) #to use in sinc_i function, first dim has #3
+		self.width = kwargs.pop('width', 1.0)		##gaussian width within [0,1] from zero to imagesize*2
 		self.FWHM = self.width*self.targetshape[0]*2.354
 	def imagefft(self):
 		if self.image == "gaus":
-			self.fimage = gaussian(self.targetshape,self.width)
+			self.fimage[0] = gaussian(self.targetshape,self.width) #amplitude only
 		else:
-                        self.fimage = np.fft.fft2(imload(self.path))
-                        
-
+                        fourier = np.fft.fftshift(np.fft.fft2(imload(self.path),norm="ortho"))
+                        ######make sure shape of image is same as phasemap_large.
+                        ######interpolation can be applied only if the targat shape is multiple of imshape
+                        if (self.targetshape[0]>fourier.shape[0])&(self.targetshape[0]%fourier.shape[0] ==0):
+                                fa = self.targetshape[0]/fourier.shape[0]
+                                self.fimage[0,fa/2::fa,fa/2::fa]=np.absolute(fourier)
+                                self.fimage[1,fa/2::fa,fa/2::fa]=np.angle(fourier)
+                                self.fimage = sinc_i(factor,self.fimage)
+                        elif (self.targetshape[0]==fourier.shape[0]):
+                                self.fimage[0] = np.absolute(fourier)
+                                self.fimage[1] = np.angle(fourier)
+                        else:
+                                print "cannot interpolate fourier plane"
+                                print "interpolation can be applied only if the targatshape is multiple of phasemap.shape"
+                                sys.exit(1)
+                                
 '''
 phasemap object
 increase the resolution of measured phasemap by desired factors
@@ -49,8 +61,8 @@ class Phasemap(object):
                 self.phasemap_large = np.zeros((3,self.factor*np.shape(self.Amp)[0],self.factor*np.shape(self.Amp)[1] ))
 
 	def interpolate(self):
-                """                                                                  
-                returns the interpolated image      
+                """
+                returns the interpolated image
                 """
 		#upsample images
 		fa=self.factor
@@ -58,7 +70,7 @@ class Phasemap(object):
 		self.phasemap_large[1,fa/2::fa,fa/2::fa]=self.Phase
 		self.phasemap_large[2,fa/2::fa,fa/2::fa]=self.Phase_res
                 self.phasemap_large = self.method(self.factor,self.phasemap_large)
-	
+
 	def interpolate_scipy(self):
                 self.phasemap_large = self.method(self.factor,self.Amp,self.Phase,self.Phase_res)
 
@@ -69,13 +81,13 @@ class Phasemap(object):
 		self.phasemap_large = self.method(self.factor, ftAmp,ftPhase,ftphres)
 '''
 Hologram object
-returns full DMD image (1920*1080) 
+returns full DMD image (1920*1080)
 '''
 
 class Hologram(object):
         def __init__(self, **kwargs):
                 self.method = kwargs.pop('method', 'hologramize')
-		self.image =  kwargs.pop('fimage', np.zeros((540,540),dtype=np.complex64))
+		self.fimage =  kwargs.pop('fimage', np.zeros((3,540,540)))
                 self.factor = kwargs.pop('factor', 30)
                 self.phasemap_large = kwargs.pop('phasemap',np.zeros((3,540,540)))
 		self.resolution = kwargs.pop('resolution', (1080,1920))
@@ -83,12 +95,10 @@ class Hologram(object):
 		self.hologram = np.zeros(self.resolution)
 		self.im_shape = np.shape(self.phasemap_large)[1]
 		self.X, self.Y = np.meshgrid(np.arange(self.im_shape)-self.im_shape/2,np.arange(self.im_shape)-self.im_shape/2)
-		self.imangle = np.angle(self.image)
-		self.imamp = np.absolute(self.image) 
 
 	def compute_hologram(self):
-		phasesum = np.mod(self.phasemap_large[1]+self.imangle,2*math.pi)*12/(2*math.pi)
-		self.hologram = self.method(self.X,self.Y,self.alpha,self.phasemap_large[0],phasesum,self.imamp,self.resolution)
+		phasesum = np.mod(self.phasemap_large[1]+self.fimage[1],2*math.pi)*12/(2*math.pi)
+		self.hologram = self.method(self.X,self.Y,self.alpha,self.phasemap_large[0],phasesum,self.fimage[0],self.resolution)
 
 
 ############functions
@@ -97,10 +107,10 @@ class Hologram(object):
 #image loading and fourier transf.
 ##############################
 def imload(path):
-	return np.aray(pil.open(path))
+	return np.array(pil.open(path))[:,:,1]/255.
 def imreshape(image):
         '''
-        under construction 
+        under construction
         '''
         return image
 
@@ -172,7 +182,7 @@ def zeropad(factor,ftAmp,ftPhase,ftphres):
 	**under construction as of nov 1 2016 @sunami
 	'''
 	zp_phasemap = np.zeros((3,factor*np.shape(ftAmp)[0],factor*np.shape(ftAmp)[1] ))
-	zp_phasemap[0] = np.fft.ifft(Amp)	
+	zp_phasemap[0] = np.fft.ifft(Amp)
 
 
 ##############################
@@ -187,6 +197,7 @@ def hologramize(X,Y,alpha,amp,phasesum,imageamp,resolution):
 	#####set minimum value for amp.
 	#####to avoid inf in omega
 	#####effect to intensity:1%
+	#####should find way around this problem
 	amp += 0.01
 	omega = (imageamp/amp)/np.amax(imageamp/amp)
       	Xsize,Ysize = np.shape(amp)
@@ -194,12 +205,6 @@ def hologramize(X,Y,alpha,amp,phasesum,imageamp,resolution):
 	hologram=1*(rand_smoothing(gratingphase,alpha,omega,Xsize,Ysize) <1)
 	dmdpattern[540-Xsize/2:540+Xsize/2,960-Ysize/2:960+Ysize/2]=hologram
 	return dmdpattern
-	
+
 if __name__ == '__main__':
 	print "test"
-
-
-
-
-
-
