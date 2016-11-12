@@ -22,18 +22,18 @@ using Modules/HologramGeneration/ImageProcessing.py
 ##########################
 #fetch data
 ##########################
-path = "../Data/PhaseMeasurement/"
+path = "../Data/PhaseMeasurement_test/"
 Amp = np.genfromtxt(path + 'Ampl.csv', delimiter=',').T
 Phase = np.genfromtxt(path +'Phasec1.csv', delimiter=',').T
 Phaseresidual = np.genfromtxt(path +'Phase_residual.csv', delimiter=',').T
 xsize,ysize = np.shape(Amp)
-factor = 60 ##patch size of phase measurement
+factor = 60 ##step size of phase measurement
 
 ###########################
 #interpolation
 ###########################
 print "start interpolation"
-interpol_setting = {'method':IP.linear_i,
+interpol_setting = {'method':IP.sinc_i,
                 'factor':factor,
                 'Amp':Amp,'Phase':Phase,'Phase residual':Phaseresidual}
 interpolated = IP.Phasemap(**interpol_setting)
@@ -44,12 +44,13 @@ phasemap = interpolated.phasemap_large
 ###########################
 #create gaussian or fourier plane
 ###########################
-gaus_setting =  {'image':"gaus",
-                    'shape':np.shape(phasemap[0]),
-                    'width':0.2}#0~1, zero to image size*2#
-Gaussian = IP.TargetImage(**gaus_setting)
-Gaussian.imagefft()
-gaus = Gaussian.fimage
+target_setting =  {'image':"im", "path":"../Data/Hologram_test/fourier130.png",
+                    'shape':np.shape(phasemap[0]), #only applicable for
+                    'width':0.2}#gaussian width. 0~1, from zero to image size*2
+Target = IP.TargetImage(**target_setting)
+Target.imagefft()
+target = Target.fimage
+
 
 ###########################
 #generate hologram
@@ -57,8 +58,8 @@ gaus = Gaussian.fimage
 print "start hologram generation"
 hologram_setting = {'factor':factor,
                     'phasemap':phasemap,
-                    'fimage':gaus,
-                    'alpha':19,
+                    'fimage':target,
+                    'alpha':8,
                     'method':IP.hologramize}
 print "setting defined"
 pattern = IP.Hologram(**hologram_setting)
@@ -84,8 +85,13 @@ fig1=plt.figure(1,(25,10))
 
 plt.subplot(2,5,1)
 plt.gray()
-plt.imshow(gaus,interpolation="none")
-plt.title('gaussian')
+if Target.image == "gaus":
+    plt.imshow(target[0],interpolation="none")
+    plt.title('target: gaus')
+else:
+    plt.imshow(np.fft.ifft2(np.fft.ifftshift(target[0]*(np.cos(target[1])+1j*np.sin(target[1])))).real,interpolation="none")
+    plt.title("target: fft, interpolation and then ifft")
+
 
 plt.subplot(2,5,2)
 plt.gray()
@@ -121,18 +127,16 @@ plt.gray()
 plt.imshow(pattern.hologram[540-xsize*factor/2:540+xsize*factor/2,960-ysize*factor/2:960+ysize*factor/2])
 plt.title('dmdimage')
 
-#plt.subplot(2,5,5)
-#plt.gray()
-#plt.imshow(Amp_l2)
-#plt.title('interpolated large amp')
+if Target.image != "gaus":
+    plt.subplot(2,5,5)
+    plt.gray()
+    plt.imshow(target[0])
+    plt.title('log(amp) of fourier transformed image ')
 
-#plt.subplot(2,5,10)
-#plt.gray()
-#plt.imshow(Phase_l2)
-#plt.title('interpolated large')
+    plt.subplot(2,5,10)
+    plt.gray()
+    plt.imshow(target[1])
+    plt.title('phase of fourier transformed image')
 
+plt.ion()
 plt.show()
-
-
-
-

@@ -18,21 +18,36 @@ TargetImage object
 load target image, apply fft2 and return fourier images of desired resolution
 '''
 class TargetImage(object):
-        def __init__(self, **kwargs):
-                self.image = kwargs.pop('image', None)
-                self.targetshape = kwargs.pop('shape', (540,540))
-		self.path =  kwargs.pop('path', None)
-		self.fimage = np.zeros(self.targetshape)
+    def __init__(self, **kwargs):
+        self.image = kwargs.pop('image', None)
+        self.targetshape = kwargs.pop('shape', (540,540))
 
-		##gaussian width within [0,1] from zero to imagesize*2
-		self.width = kwargs.pop('width', 1.0)
+		self.path =  kwargs.pop('path', None)
+		self.fimage = np.zeros((3,self.targetshape[0],self.targetshape[1])) #to use in sinc_i function, first dim has #3
+		self.width = kwargs.pop('width', 1.0)		##gaussian width within [0,1] from zero to imagesize*2
 		self.FWHM = self.width*self.targetshape[0]*2.354
 	def imagefft(self):
 		if self.image == "gaus":
-			self.fimage = gaussian(self.targetshape,self.width)
+			self.fimage[0] = gaussian(self.targetshape,self.width) #amplitude only
 		else:
-			print "no function available for now"
-
+			fourier = imload(self.path)
+			#fourier = np.fft.fftshift(np.fft.fft2(imload(self.path),norm="ortho"))
+            ######make sure shape of image is same as phasemap_large.
+            ######interpolation can be applied only if the targat shape is multiple of imshape
+            if (self.targetshape[0]>fourier.shape[0])&(self.targetshape[0]%fourier.shape[0] ==0):
+                fa = self.targetshape[0]/fourier.shape[0]
+                self.fimage[0,fa/2::fa,fa/2::fa]=np.absolute(fourier)
+                self.fimage[1,fa/2::fa,fa/2::fa]=np.angle(fourier)
+                self.fimage = sinc_i(fa,self.fimage)
+            elif (self.targetshape[0]==fourier.shape[0]):
+				self.fimage[0] = np.absolute(self.fimage[0])
+				self.fimage[1] = np.angle(self.fimage[0])
+				#self.fimage[0] = np.absolute(fourier)
+                #self.fimage[1] = np.angle(fourier)
+            else:
+                print "cannot interpolate fourier plane"
+                print "interpolation can be applied only if the targatshape is multiple of phasemap.shape"
+                sys.exit(1)
 
 '''
 phasemap object
@@ -42,26 +57,26 @@ where xsize,ysize = np.shape(Amp)
 '''
 class Phasemap(object):
         def __init__(self, **kwargs):
-                self.method = kwargs.pop('method', None)
-                self.Amp = kwargs.pop('Amp', np.zeros((9,9)))
-                self.Phase = kwargs.pop('Phase', np.zeros((9,9)))
-                self.Phase_res = kwargs.pop('Phase residual', np.zeros((9,9)))
-                self.factor = kwargs.pop('factor', 30)
-                self.phasemap_large = np.zeros((3,self.factor*np.shape(self.Amp)[0],self.factor*np.shape(self.Amp)[1] ))
+            self.method = kwargs.pop('method', None)
+            self.Amp = kwargs.pop('Amp', np.zeros((9,9)))
+            self.Phase = kwargs.pop('Phase', np.zeros((9,9)))
+            self.Phase_res = kwargs.pop('Phase residual', np.zeros((9,9)))
+            self.factor = kwargs.pop('factor', 30)
+            self.phasemap_large = np.zeros((3,self.factor*np.shape(self.Amp)[0],self.factor*np.shape(self.Amp)[1] ))
 
 	def interpolate(self):
-                """                                                                  
-                returns the interpolated image      
-                """
+	            """
+	            returns the interpolated image
+	            """
 		#upsample images
 		fa=self.factor
 		self.phasemap_large[0,fa/2::fa,fa/2::fa]=self.Amp
 		self.phasemap_large[1,fa/2::fa,fa/2::fa]=self.Phase
 		self.phasemap_large[2,fa/2::fa,fa/2::fa]=self.Phase_res
-                self.phasemap_large = self.method(self.factor,self.phasemap_large)
-	
+	    self.phasemap_large = self.method(self.factor,self.phasemap_large)
+
 	def interpolate_scipy(self):
-                self.phasemap_large = self.method(self.factor,self.Amp,self.Phase,self.Phase_res)
+        self.phasemap_large = self.method(self.factor,self.Amp,self.Phase,self.Phase_res)
 
 	def interpolate_fft(self):
 		ftAmp = np.fft.fft2(Amp)
@@ -70,27 +85,24 @@ class Phasemap(object):
 		self.phasemap_large = self.method(self.factor, ftAmp,ftPhase,ftphres)
 '''
 Hologram object
-returns full DMD image (1920*1080) 
+returns full DMD image (1920*1080)
 '''
 
 class Hologram(object):
         def __init__(self, **kwargs):
-                self.method = kwargs.pop('method', 'hologramize')
-		self.image =  kwargs.pop('fimage', np.zeros((540,540),dtype=np.complex64))
-                self.factor = kwargs.pop('factor', 30)
-                self.phasemap_large = kwargs.pop('phasemap',np.zeros((3,540,540)))
+        self.method = kwargs.pop('method', 'hologramize')
+		self.fimage =  kwargs.pop('fimage', np.zeros((3,540,540)))
+        self.factor = kwargs.pop('factor', 30)
+        self.phasemap_large = kwargs.pop('phasemap',np.zeros((3,540,540)))
 		self.resolution = kwargs.pop('resolution', (1080,1920))
 		self.alpha = kwargs.pop('alpha', 4)
 		self.hologram = np.zeros(self.resolution)
 		self.im_shape = np.shape(self.phasemap_large)[1]
-		self.X, self.Y = np.meshgrid(np.arange(self.im_shape)-self.im_shape/2,np.arange(self.im_shape)-self.im_shape/2,self.phasemap_large)
-
-		self.imangle = np.angle(self.image)
-		self.imamp = np.absolute(self.image) 
+		self.X, self.Y = np.meshgrid(np.arange(self.im_shape)-self.im_shape/2,np.arange(self.im_shape)-self.im_shape/2)
 
 	def compute_hologram(self):
-		phasesum = np.mod(self.phasemap_large[1]+self.imangle,2*math.pi)*12
-		self.hologram = self.method(self.X,self.Y,self.alpha,self.phasemap_large[0],phasesum,self.imamp,self.resolution)
+		phasesum = np.mod(self.phasemap_large[1]+self.fimage[1],2*math.pi)*12/(2*math.pi)
+		self.hologram = self.method(self.X,self.Y,self.alpha,self.phasemap_large[0],phasesum,self.fimage[0],self.resolution)
 
 
 ############functions
@@ -99,7 +111,12 @@ class Hologram(object):
 #image loading and fourier transf.
 ##############################
 def imload(path):
-	return np.aray(pil.open(path))
+	return np.array(pil.open(path))[:,:,1]/255.
+def imreshape(image):
+        '''
+        under construction
+        '''
+    return image
 
 def gaussian(shape,width):
 	nx = np.arange(0,shape[0]) - shape[0]/2
@@ -139,13 +156,13 @@ def linear_i(factor,phasemap):
 def sinc_i(factor,phasemap):
 	size = np.shape(phasemap)[1]
 	kernel = np.zeros((size,size))
-	w = size/2/factor
-	kernel[size/2-w:size/2+2,size/2-w:size/2+w]=1
+	width = size/2/factor
+	kernel[size/2-width:size/2+width,size/2-width:size/2+width]=1
 	kernel = np.fft.fftshift(kernel)
 	maxval = phasemap.max(axis=2).max(axis=1)
 	minval = phasemap.min(axis=2).min(axis=1)
 	for i in np.arange(3):
-		convolved = np.fft.ifft2(np.fft.fft2(phasemap[i])*kernel)
+		convolved = np.fft.ifft2(np.fft.fft2(phasemap[i])*kernel).real
 		convolved -= np.amin(convolved)#set minimum to zero
 		phasemap[i] = (maxval[i]-minval[i])*convolved/(np.amax(convolved))#rescale
 	phasemap[0] /= np.amax(phasemap[0]) #normalize intensity
@@ -169,32 +186,29 @@ def zeropad(factor,ftAmp,ftPhase,ftphres):
 	**under construction as of nov 1 2016 @sunami
 	'''
 	zp_phasemap = np.zeros((3,factor*np.shape(ftAmp)[0],factor*np.shape(ftAmp)[1] ))
-	zp_phasemap[0] = np.fft.ifft(Amp)	
+	zp_phasemap[0] = np.fft.ifft(Amp)
 
 
 ##############################
 #hologram functions
 ##############################
 def hologramize(X,Y,alpha,amp,phasesum,imageamp,resolution):
+	print "def"
 	dmdpattern = np.zeros(resolution)
-	gratingphase = np.mod(Y+X+phasesum,12)/12.
-
+	print "pattern "
+	gratingphase = np.mod(Y+X+phasesum,12.)/12.
+	print "grating phase"
 	#####set minimum value for amp.
 	#####to avoid inf in omega
 	#####effect to intensity:1%
+	#####should find way around this problem
 	amp += 0.01
-
 	omega = (imageamp/amp)/np.amax(imageamp/amp)
-      	Xsize,Ysize = np.shape(amp)
+    Xsize,Ysize = np.shape(amp)
+	print "omega"
 	hologram=1*(rand_smoothing(gratingphase,alpha,omega,Xsize,Ysize) <1)
 	dmdpattern[540-Xsize/2:540+Xsize/2,960-Ysize/2:960+Ysize/2]=hologram
 	return dmdpattern
-	
+
 if __name__ == '__main__':
 	print "test"
-
-
-
-
-
-
