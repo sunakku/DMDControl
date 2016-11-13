@@ -27,13 +27,13 @@ Amp = np.genfromtxt(path + 'Ampl.csv', delimiter=',').T
 Phase = np.genfromtxt(path +'Phasec1.csv', delimiter=',').T
 Phaseresidual = np.genfromtxt(path +'Phase_residual.csv', delimiter=',').T
 xsize,ysize = np.shape(Amp)
-factor = 60 ##patch size of phase measurement
+factor = 60 ##step size of phase measurement
 
 ###########################
 #interpolation
 ###########################
 print "start interpolation"
-interpol_setting = {'method':IP.linear_i,
+interpol_setting = {'method':IP.sinc_i,
                 'factor':factor,
                 'Amp':Amp,'Phase':Phase,'Phase residual':Phaseresidual}
 interpolated = IP.Phasemap(**interpol_setting)
@@ -44,12 +44,12 @@ phasemap = interpolated.phasemap_large
 ###########################
 #create gaussian or fourier plane
 ###########################
-gaus_setting =  {'image':"gaus",
+target_setting =  {'image':"", "path":"../Data/Hologram_test/JFourie540.png",
                     'shape':np.shape(phasemap[0]),
                     'width':0.2}#0~1, zero to image size*2#
-Gaussian = IP.TargetImage(**gaus_setting)
-Gaussian.imagefft()
-gaus = Gaussian.fimage
+Target = IP.TargetImage(**target_setting)
+Target.imagefft()
+target = Target.fimage
 
 ###########################
 #generate hologram
@@ -57,8 +57,8 @@ gaus = Gaussian.fimage
 print "start hologram generation"
 hologram_setting = {'factor':factor,
                     'phasemap':phasemap,
-                    'fimage':gaus,
-                    'alpha':19,
+                    'fimage':target,
+                    'alpha':8,
                     'method':IP.hologramize}
 print "setting defined"
 pattern = IP.Hologram(**hologram_setting)
@@ -84,8 +84,8 @@ fig1=plt.figure(1,(25,10))
 
 plt.subplot(2,5,1)
 plt.gray()
-plt.imshow(gaus,interpolation="none")
-plt.title('gaussian')
+plt.imshow(target.real,interpolation="none")
+plt.title('target')
 
 plt.subplot(2,5,2)
 plt.gray()
